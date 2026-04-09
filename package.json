@@ -7,7 +7,7 @@
     "format": "prettier --write test/**/*.js --plugin=prettier-plugin-solidity contracts/**/*.sol",
     "format:check": "prettier --check test/**/*.js --plugin=prettier-plugin-solidity contracts/**/*.sol",
     "lint": "solhint contracts/**.sol contracts/**/*.sol",
-    "deploy": "hardhat ignition deploy ignition/modules/vault.js",
+    "deploy": "hardhat ignition deploy ignition/modules/warden.js",
     "coverage": "hardhat coverage",
     "gas:report": "REPORT_GAS=true hardhat test"
   },

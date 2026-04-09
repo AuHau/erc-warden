@@ -15,13 +15,13 @@ type FundId is bytes32;
 /// A fund can only be manipulated by a controller when it is locked. Tokens can
 /// only be withdrawn when a fund is unlocked.
 ///
-/// The vault maintains the lock invariant to ensure its integrity:
+/// The warden maintains the lock invariant to ensure its integrity:
 ///
 /// (∀ controller ∈ Controller, fundId ∈ FundId:
 ///   fund.lockExpiry <= fund.lockMaximum
 ///   where fund = _funds[controller][fundId])
 ///
-abstract contract VaultBase {
+abstract contract WardenBase {
   using SafeERC20 for IERC20;
   using Funds for Fund;
 
@@ -72,7 +72,7 @@ abstract contract VaultBase {
     Timestamp maximum
   ) internal {
     Fund memory fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Inactive, VaultFundAlreadyLocked());
+    require(fund.status() == FundStatus.Inactive, WardenFundAlreadyLocked());
     fund.lockExpiry = expiry;
     fund.lockMaximum = maximum;
     _checkLockInvariant(fund);
@@ -85,8 +85,8 @@ abstract contract VaultBase {
     Timestamp expiry
   ) internal {
     Fund memory fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
-    require(fund.lockExpiry <= expiry, VaultInvalidExpiry());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
+    require(fund.lockExpiry <= expiry, WardenInvalidExpiry());
     fund.lockExpiry = expiry;
     _checkLockInvariant(fund);
     _funds[controller][fundId] = fund;
@@ -99,7 +99,7 @@ abstract contract VaultBase {
     uint128 amount
   ) internal {
     Fund storage fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
     Account storage account = _accounts[controller][fundId][accountId];
 
@@ -119,10 +119,10 @@ abstract contract VaultBase {
     uint128 amount
   ) internal {
     Fund memory fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
     Account memory account = _accounts[controller][fundId][accountId];
-    require(amount <= account.balance.available, VaultInsufficientBalance());
+    require(amount <= account.balance.available, WardenInsufficientBalance());
 
     account.balance.available -= amount;
     account.balance.designated += amount;
@@ -138,10 +138,10 @@ abstract contract VaultBase {
     uint128 amount
   ) internal {
     Fund memory fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
     Account memory sender = _accounts[controller][fundId][from];
-    require(amount <= sender.balance.available, VaultInsufficientBalance());
+    require(amount <= sender.balance.available, WardenInsufficientBalance());
 
     sender.balance.available -= amount;
 
@@ -157,10 +157,10 @@ abstract contract VaultBase {
     uint128 amount
   ) internal {
     Fund storage fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
     Account storage account = _accounts[controller][fundId][accountId];
-    require(account.balance.designated >= amount, VaultInsufficientBalance());
+    require(account.balance.designated >= amount, WardenInsufficientBalance());
 
     account.balance.designated -= amount;
 
@@ -174,7 +174,7 @@ abstract contract VaultBase {
   ) internal {
     require(
       _funds[controller][fundId].status() == FundStatus.Locked,
-      VaultFundNotLocked()
+      WardenFundNotLocked()
     );
 
     Account memory account = _accounts[controller][fundId][accountId];
@@ -187,7 +187,7 @@ abstract contract VaultBase {
 
   function _freezeFund(Controller controller, FundId fundId) internal {
     Fund storage fund = _funds[controller][fundId];
-    require(fund.status() == FundStatus.Locked, VaultFundNotLocked());
+    require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
     fund.frozenAt = Timestamps.currentTime();
   }
@@ -199,7 +199,7 @@ abstract contract VaultBase {
   ) internal {
     require(
       _funds[controller][fundId].status() == FundStatus.Withdrawing,
-      VaultFundNotUnlocked()
+      WardenFundNotUnlocked()
     );
 
     Account memory account = _accounts[controller][fundId][accountId];
@@ -212,12 +212,12 @@ abstract contract VaultBase {
   }
 
   function _checkLockInvariant(Fund memory fund) private pure {
-    require(fund.lockExpiry <= fund.lockMaximum, VaultInvalidExpiry());
+    require(fund.lockExpiry <= fund.lockMaximum, WardenInvalidExpiry());
   }
 
-  error VaultInsufficientBalance();
-  error VaultInvalidExpiry();
-  error VaultFundNotLocked();
-  error VaultFundNotUnlocked();
-  error VaultFundAlreadyLocked();
+  error WardenInsufficientBalance();
+  error WardenInvalidExpiry();
+  error WardenFundNotLocked();
+  error WardenFundNotUnlocked();
+  error WardenFundAlreadyLocked();
 }

@@ -1,30 +1,29 @@
 ---
 eip: XXXX
-title: Secure Token Custody Vault
+title: Secure Token Custody Warden
 description: A standard interface for controller-scoped ERC-20 token custody with time-locked funds and account designation.
-author: (@auhau)
+author: (Adam Uhlir <adam@uhlir.dev>, Mark Spanbroek <mark@spanbroek.net>, Eric Mastro (@emizzle))
 discussions-to: https://ethereum-magicians.org/
 status: Draft
 type: Standards Track
 category: ERC
 created: 2026-04-07
-requires: 20
 ---
 
 ## Abstract
 
-This proposal defines a standard interface for a **Vault** — a smart contract that holds ERC-20 tokens on behalf of other smart contracts (called *controllers*). Controllers instruct the Vault to move tokens between internal accounts; they never hold tokens themselves. The Vault organises accounts into *funds* that carry a time-lock lifecycle. Tokens can be irreversibly committed to an account holder (*designation*) or destroyed (*burning*). The lock invariant is enforced at every state-changing operation.
+This proposal defines a standard interface for a **Warden** - a smart contract that holds ERC-20 tokens on behalf of other smart contracts (called *controllers*). Controllers instruct the Warden to move tokens between internal accounts; they never hold tokens themselves. The Warden organises accounts into *funds* that carry a time-lock lifecycle. Tokens can be irreversibly committed to an account holder (*designation*) or destroyed (*burning*). The lock invariant is enforced at every state-changing operation.
 
 ## Motivation
 
-Most DeFi contracts hold their own ERC-20 token balances. When a bug or exploit is found in the business logic, an attacker can often drain the entire balance in a single transaction. The Vault pattern introduces **defence in depth**: the token custody contract enforces invariants that constrain what even a fully compromised controller can do.
+Most DeFi contracts hold their own ERC-20 token balances. When a bug or exploit is found in the business logic, an attacker can often drain the entire balance in a single transaction. The Warden pattern introduces **defence in depth**: the token custody contract enforces invariants that constrain what even a fully compromised controller can do.
 
-Concretely, the Vault addresses these threat scenarios:
+Concretely, the Warden addresses these threat scenarios:
 
-- **Redirecting funds** — A time-lock prevents an attacker from withdrawing tokens immediately; by the time the lock expires, the balances are frozen in place.
-- **Stealing collateral** — Designation makes tokens permanently committed to their rightful holder; no controller operation can transfer them away.
-- **Blocking withdrawals** — Account holders can call `withdrawByRecipient` directly, bypassing the controller entirely.
-- **Catastrophic partial compromise** — `freezeFund` halts operations and freezes balances at a known-good snapshot.
+- **Redirecting funds** - A time-lock prevents an attacker from withdrawing tokens immediately; by the time the lock expires, the balances are frozen in place.
+- **Stealing collateral** - Designation makes tokens permanently committed to their rightful holder; no controller operation can transfer them away.
+- **Blocking withdrawals** - Account holders can call `withdrawByRecipient` directly, bypassing the controller entirely.
+- **Catastrophic partial compromise** - `freezeFund` halts operations and freezes balances at a known-good snapshot.
 
 No existing ERC covers this combination of features. ERC-4626 targets yield-bearing vaults without controller/custody separation. ERC-6229 adds lock-in periods to ERC-4626 but serves a different purpose. ERC-7444 is a query-only maturity interface.
 
@@ -34,14 +33,14 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Types
 
-A compliant Vault MUST expose the following user-defined types:
+A compliant Warden MUST expose the following user-defined types:
 
 | Type | Underlying | Description |
 |------|-----------|-------------|
 | `FundId` | `bytes32` | Identifies a fund within a controller's namespace. Chosen by the controller. |
 | `AccountId` | `bytes32` | Identifies an account. Encodes a 20-byte holder address (high bits) and a 12-byte discriminator (low bits). |
 
-A compliant Vault MUST expose the following enum:
+A compliant Warden MUST expose the following enum:
 
 ```solidity
 enum FundStatus {
@@ -54,7 +53,7 @@ enum FundStatus {
 
 ### Controller Identity
 
-The Vault uses `msg.sender` as the controller address for all fund-scoped operations. Each controller has an isolated namespace of funds; one controller cannot access another controller's funds.
+The Warden uses `msg.sender` as the controller address for all fund-scoped operations. Each controller has an isolated namespace of funds; one controller cannot access another controller's funds.
 
 ### Account Identity
 
@@ -66,7 +65,7 @@ AccountId = bytes32(bytes20(holder)) | bytes32(uint256(uint96(discriminator)))
 
 The holder address embedded in the `AccountId` is the only address to which tokens can be withdrawn from that account. The discriminator allows a single address to hold multiple independent accounts within the same fund.
 
-A compliant Vault MUST provide encoding and decoding helpers:
+A compliant Warden MUST provide encoding and decoding helpers:
 
 ```solidity
 function encodeAccountId(address holder, bytes12 discriminator)
@@ -109,8 +108,8 @@ function lock(FundId fundId, Timestamp expiry, Timestamp maximum) external;
 
 Activates a fund by setting its time-lock parameters.
 
-- MUST revert with `VaultFundAlreadyLocked` if the fund is not in `Inactive` state.
-- MUST revert with `VaultInvalidExpiry` if `expiry > maximum`.
+- MUST revert with `WardenFundAlreadyLocked` if the fund is not in `Inactive` state.
+- MUST revert with `WardenInvalidExpiry` if `expiry > maximum`.
 - On success: sets `fund.lockExpiry = expiry` and `fund.lockMaximum = maximum`. The fund transitions to `Locked`.
 
 The `maximum` is an upper bound on any subsequent `extendLock` call. It MUST NOT be modified after `lock` is called.
@@ -123,9 +122,9 @@ function extendLock(FundId fundId, Timestamp expiry) external;
 
 Pushes the lock expiry forward, for example to accommodate additional participants joining a deal.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
-- MUST revert with `VaultInvalidExpiry` if `expiry < fund.lockExpiry` (cannot move expiry backward).
-- MUST revert with `VaultInvalidExpiry` if `expiry > fund.lockMaximum`.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenInvalidExpiry` if `expiry < fund.lockExpiry` (cannot move expiry backward).
+- MUST revert with `WardenInvalidExpiry` if `expiry > fund.lockMaximum`.
 - On success: sets `fund.lockExpiry = expiry`.
 
 #### `deposit`
@@ -134,10 +133,10 @@ Pushes the lock expiry forward, for example to accommodate additional participan
 function deposit(FundId fundId, AccountId accountId, uint128 amount) external;
 ```
 
-Moves ERC-20 tokens from `msg.sender` into the Vault and credits the account's *available* balance.
+Moves ERC-20 tokens from `msg.sender` into the Warden and credits the account's *available* balance.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
-- MUST transfer `amount` of the Vault's ERC-20 token from `msg.sender` to the Vault contract using `safeTransferFrom`. MUST revert if the transfer fails.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST transfer `amount` of the Warden's ERC-20 token from `msg.sender` to the Warden contract using `safeTransferFrom`. MUST revert if the transfer fails.
 - On success: `account.balance.available += amount`.
 
 #### `transfer`
@@ -148,8 +147,8 @@ function transfer(FundId fundId, AccountId from, AccountId to, uint128 amount) e
 
 Moves available tokens between two accounts within the same fund. Only *available* tokens (not designated) can be transferred.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
-- MUST revert with `VaultInsufficientBalance` if `amount > sender.balance.available`.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenInsufficientBalance` if `amount > sender.balance.available`.
 - After the solvency check passes: `from.balance.available -= amount`, `to.balance.available += amount`.
 - MUST enforce the account solvency invariant on the sending account after deduction (see Invariants).
 
@@ -161,8 +160,8 @@ function designate(FundId fundId, AccountId accountId, uint128 amount) external;
 
 Irreversibly commits available tokens to the account holder. Once designated, tokens cannot be transferred to any other account.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
-- MUST revert with `VaultInsufficientBalance` if `amount > account.balance.available`.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenInsufficientBalance` if `amount > account.balance.available`.
 - On success: `account.balance.available -= amount`, `account.balance.designated += amount`.
 
 #### `burnDesignated`
@@ -173,8 +172,8 @@ function burnDesignated(FundId fundId, AccountId accountId, uint128 amount) exte
 
 Destroys a specified quantity of designated tokens from an account (penalty/slashing).
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
-- MUST revert with `VaultInsufficientBalance` if `amount > account.balance.designated`.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenInsufficientBalance` if `amount > account.balance.designated`.
 - On success: `account.balance.designated -= amount`. The `amount` of tokens MUST be transferred to address `0x000000000000000000000000000000000000dEaD`.
 
 #### `burnAccount`
@@ -185,7 +184,7 @@ function burnAccount(FundId fundId, AccountId accountId) external;
 
 Destroys the entire balance (available + designated) of an account.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
 - On success: deletes the account record and transfers `available + designated` tokens to address `0x000000000000000000000000000000000000dEaD`.
 
 #### `freezeFund`
@@ -196,7 +195,7 @@ function freezeFund(FundId fundId) external;
 
 Immediately halts all controller operations on a fund until the lock expires naturally.
 
-- MUST revert with `VaultFundNotLocked` if the fund is not in `Locked` state.
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
 - On success: records `fund.frozenAt = block.timestamp`. The fund enters `Frozen` state.
 
 #### `withdraw`
@@ -207,7 +206,7 @@ function withdraw(FundId fundId, AccountId accountId) external;
 
 Called by the controller to send an account's full balance to its holder.
 
-- MUST revert with `VaultFundNotUnlocked` if the fund is not in `Withdrawing` state.
+- MUST revert with `WardenFundNotUnlocked` if the fund is not in `Withdrawing` state.
 - Computes `amount = account.balance.available + account.balance.designated`.
 - Deletes the account record (so a second `withdraw` call returns zero tokens).
 - Transfers `amount` of the ERC-20 token to the holder address extracted from `accountId`.
@@ -224,19 +223,19 @@ function withdrawByRecipient(
 
 Called directly by the account holder, bypassing the controller. This is a critical safety escape hatch.
 
-- MUST revert with `VaultOnlyAccountHolder` if `msg.sender` is not equal to the holder address encoded in `accountId`.
+- MUST revert with `WardenOnlyAccountHolder` if `msg.sender` is not equal to the holder address encoded in `accountId`.
 - Otherwise identical to `withdraw`, using the provided `controller` to scope the fund lookup.
 
-This function MUST NOT be subject to the pause mechanism (if any), so that account holders can always recover their tokens even when the Vault is paused.
+This function MUST NOT be subject to the pause mechanism (if any), so that account holders can always recover their tokens even when the Warden is paused.
 
 ### Query Functions
 
-A compliant Vault MUST expose the following view functions. All are called by the controller (`msg.sender` determines the controller namespace):
+A compliant Warden MUST expose the following view functions. All are called by the controller (`msg.sender` determines the controller namespace):
 
 ```solidity
 function getToken() external view returns (IERC20);
 ```
-Returns the ERC-20 token that this Vault holds custody of.
+Returns the ERC-20 token that this Warden holds custody of.
 
 ```solidity
 function getBalance(FundId fundId, AccountId accountId) external view returns (uint128);
@@ -260,7 +259,7 @@ Returns the `lockExpiry` timestamp of the fund.
 
 ### Invariants
 
-A compliant Vault MUST enforce the following invariant at every state-changing operation. Any operation that would violate it MUST revert.
+A compliant Warden MUST enforce the following invariant at every state-changing operation. Any operation that would violate it MUST revert.
 
 #### Lock Invariant
 
@@ -274,16 +273,16 @@ The lock expiry can never exceed the maximum established at `lock` time. Checked
 
 | Error | Condition |
 |-------|-----------|
-| `VaultFundAlreadyLocked` | `lock` called on a fund that is not `Inactive` |
-| `VaultFundNotLocked` | A controller operation requiring `Locked` state was called on a fund that is not `Locked` |
-| `VaultFundNotUnlocked` | `withdraw` called on a fund that is not `Withdrawing` |
-| `VaultInvalidExpiry` | `lock` or `extendLock` called with an `expiry` outside the valid range |
-| `VaultInsufficientBalance` | An operation would exceed the available or designated balance |
-| `VaultOnlyAccountHolder` | `withdrawByRecipient` called by an address that is not the account holder |
+| `WardenFundAlreadyLocked` | `lock` called on a fund that is not `Inactive` |
+| `WardenFundNotLocked` | A controller operation requiring `Locked` state was called on a fund that is not `Locked` |
+| `WardenFundNotUnlocked` | `withdraw` called on a fund that is not `Withdrawing` |
+| `WardenInvalidExpiry` | `lock` or `extendLock` called with an `expiry` outside the valid range |
+| `WardenInsufficientBalance` | An operation would exceed the available or designated balance |
+| `WardenOnlyAccountHolder` | `withdrawByRecipient` called by an address that is not the account holder |
 
 ### Pause Mechanism (OPTIONAL)
 
-A Vault implementation MAY support pausing by an owner or governance contract. If pausing is implemented:
+A Warden implementation MAY support pausing by an owner or governance contract. If pausing is implemented:
 
 - All controller operations (`lock`, `extendLock`, `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `freezeFund`, `withdraw`) SHOULD be blocked when paused.
 - `withdrawByRecipient` MUST remain callable when paused. Account holders must always be able to recover their tokens.
@@ -296,8 +295,8 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @title IERC-XXXX Secure Token Custody Vault
-interface IVault {
+/// @title IERC-XXXX Secure Token Custody Warden
+interface IWarden {
     // -------------------------------------------------------------------------
     // Types
     // -------------------------------------------------------------------------
@@ -318,12 +317,12 @@ interface IVault {
     // Errors
     // -------------------------------------------------------------------------
 
-    error VaultFundAlreadyLocked();
-    error VaultFundNotLocked();
-    error VaultFundNotUnlocked();
-    error VaultInvalidExpiry();
-    error VaultInsufficientBalance();
-    error VaultOnlyAccountHolder();
+    error WardenFundAlreadyLocked();
+    error WardenFundNotLocked();
+    error WardenFundNotUnlocked();
+    error WardenInvalidExpiry();
+    error WardenInsufficientBalance();
+    error WardenOnlyAccountHolder();
 
     // -------------------------------------------------------------------------
     // Account ID helpers
@@ -396,7 +395,7 @@ interface IVault {
     function withdraw(FundId fundId, AccountId accountId) external;
 
     /// @notice Called directly by the account holder; bypasses the controller.
-    ///         MUST remain callable even when the Vault is paused.
+    ///         MUST remain callable even when the Warden is paused.
     function withdrawByRecipient(
         address controller,
         FundId fundId,
@@ -409,11 +408,11 @@ interface IVault {
 
 ### Controller-as-caller identity
 
-Using `msg.sender` as the controller address removes the need for explicit access control lists inside the Vault. A controller can only access funds it created. This keeps the interface minimal and avoids a separate registration step.
+Using `msg.sender` as the controller address removes the need for explicit access control lists inside the Warden. A controller can only access funds it created. This keeps the interface minimal and avoids a separate registration step.
 
 ### `FundId` chosen by the controller
 
-Controllers typically derive `FundId` from a domain object (e.g. a keccak hash of a request ID). This allows deterministic lookup without requiring the Vault to issue IDs, and it means the controller can lock a fund in the same transaction that creates the domain object.
+Controllers typically derive `FundId` from a domain object (e.g. a keccak hash of a request ID). This allows deterministic lookup without requiring the Warden to issue IDs, and it means the controller can lock a fund in the same transaction that creates the domain object.
 
 ### No `FundId` reuse
 
@@ -425,15 +424,11 @@ Some ERC-20 implementations revert on `transfer` to `address(0)`. Using `0xdEaD`
 
 ### `withdrawByRecipient` not pausable
 
-The ability for account holders to withdraw directly is the ultimate safety guarantee. If the Vault owner or governance is also compromised, pausing the Vault must not be able to trap account holders' funds. A paused Vault that blocks all withdrawals would be indistinguishable from a compromised one.
+The ability for account holders to withdraw directly is the ultimate safety guarantee. If the Warden owner or governance is also compromised, pausing the Warden must not be able to trap account holders' funds. A paused Warden that blocks all withdrawals would be indistinguishable from a compromised one.
 
 ### No events
 
 This specification does not mandate events in order to keep the interface minimal. Implementations SHOULD emit events for off-chain indexing, but the exact event signatures are left to the implementer to avoid over-constraining the ABI.
-
-## Backwards Compatibility
-
-This is a new interface. No backwards compatibility concerns apply.
 
 ## Security Considerations
 
@@ -447,7 +442,7 @@ All balance arithmetic uses `uint128`. Implementations MUST ensure that `balance
 
 ### Fund namespace isolation
 
-Because `msg.sender` determines the controller namespace, a Vault that is itself a controller (e.g. a proxy or aggregator) creates a shared namespace for all callers of that contract. Implementers of controller contracts MUST ensure that distinct callers cannot affect each other's funds through the shared controller address.
+Because `msg.sender` determines the controller namespace, a Warden that is itself a controller (e.g. a proxy or aggregator) creates a shared namespace for all callers of that contract. Implementers of controller contracts MUST ensure that distinct callers cannot affect each other's funds through the shared controller address.
 
 ### Withdrawal completeness
 

@@ -1,10 +1,10 @@
 const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules")
 const TokenModule = require("./token.js")
 
-module.exports = buildModule("Vault", (m) => {
+module.exports = buildModule("Warden", (m) => {
   const { token } = m.useModule(TokenModule)
 
-  const vault = m.contract("Vault", [token], {})
+  const warden = m.contract("Warden", [token], {})
 
-  return { vault, token }
+  return { warden, token }
 })

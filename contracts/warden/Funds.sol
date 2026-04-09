@@ -24,11 +24,11 @@ enum FundStatus {
   /// initial state.
   Inactive,
   /// Indicates that a time-lock is set and withdrawing tokens is not allowed. A
-  /// fund needs to be locked for deposits, transfers, flows and burning to be
+  /// fund needs to be locked for deposits, transfers and burning to be
   /// allowed.
   Locked,
-  /// Indicates that a locked fund is frozen. Flows have stopped, nothing is
-  /// allowed until the fund unlocks.
+  /// Indicates that a locked fund is frozen. Nothing is allowed until the
+  /// fund unlocks.
   Frozen,
   /// Indicates the fund has unlocked and withdrawing is allowed. Other
   /// operations are no longer allowed.

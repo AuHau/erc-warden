@@ -1,11 +1,11 @@
-# ERC Vault: A Secure Token Custody Standard
+# ERC Warden: A Secure Token Custody Standard
 
 ## Overview
 
-The Vault is a smart contract pattern that separates ERC20 token custody from business logic,
+The Warden is a smart contract pattern that separates ERC20 token custody from business logic,
 reducing the attack surface of contracts that manage funds. Rather than holding tokens directly,
 a business-logic contract (called a **controller**) delegates all token custody to an external
-Vault contract. The Vault enforces strict rules about when and how tokens can move, adding
+Warden contract. The Warden enforces strict rules about when and how tokens can move, adding
 time-based and designation-based protections that limit the damage an attacker can do even
 after compromising the controller.
 
@@ -14,11 +14,11 @@ after compromising the controller.
 ## Motivation
 
 Most DeFi contracts hold their own tokens. When a bug or exploit is found in the business
-logic, an attacker can often drain funds in a single transaction. The Vault pattern introduces
-**defence in depth**: even if a controller is fully compromised, the Vault's invariants ensure
+logic, an attacker can often drain funds in a single transaction. The Warden pattern introduces
+**defence in depth**: even if a controller is fully compromised, the Warden's invariants ensure
 that:
 
-- Tokens cannot be redirected immediately — they are frozen in place once a time-lock expires.
+- Tokens cannot be redirected immediately - they are frozen in place once a time-lock expires.
 - Collateral tokens can be permanently committed (designated) to their rightful owner,
   making redirection impossible.
 - Account holders can always withdraw directly, bypassing a compromised controller entirely.
@@ -32,7 +32,7 @@ that:
 ### Hierarchy
 
 ```
-Vault
+Warden
  └── Controller (a smart contract address)
       └── Fund (identified by a bytes32 FundId chosen by the controller)
            └── Account (identified by AccountId = holder address ++ 12-byte discriminator)
@@ -41,18 +41,15 @@ Vault
 ```
 
 Each controller (i.e. each deployed business-logic contract) has its own isolated namespace
-of funds inside the shared Vault. Controllers cannot access each other's funds.
+of funds inside the shared Warden. Controllers cannot access each other's funds.
 
 Each fund is a collection of accounts that share a single lifecycle (the time-lock). Funds
-are created by the controller choosing a unique `FundId` — typically derived from a domain
-object such as a request ID.
+are created by the controller choosing a unique `FundId`
 
 Each account belongs to a fund and tracks:
-- **available balance** — tokens that the controller can still redistribute between accounts
-- **designated balance** — tokens irreversibly committed to the account holder; cannot be
+- **available balance** - tokens that the controller can still redistribute between accounts
+- **designated balance** - tokens irreversibly committed to the account holder; cannot be
   transferred away, only burned or withdrawn
-- **flow** — an ongoing stream of tokens flowing in or out at a rate measured in
-  tokens-per-second
 
 ### Account Identity
 
@@ -86,10 +83,10 @@ Inactive ──lock()──► Locked ──time passes──► Withdrawing
 The controller determines when and for how long a fund is locked, subject to two constraints
 set at lock time:
 
-- `lockExpiry` — when the lock expires naturally
-- `lockMaximum` — the furthest the expiry can ever be extended
+- `lockExpiry` - when the lock expires naturally
+- `lockMaximum` - the furthest the expiry can ever be extended
 
-The `lockMaximum` is fixed at lock creation time and cannot be changed. This means the Vault
+The `lockMaximum` is fixed at lock creation time and cannot be changed. This means the Warden
 can enforce the **account solvency invariant** at the time a flow is set up: the available
 balance must be sufficient to pay the outgoing flow all the way to `lockMaximum`, regardless
 of any future `extendLock` calls.
@@ -102,14 +99,15 @@ of any future `extendLock` calls.
 
 The controller calls `lock(fundId, expiry, maximum)` once to activate a fund. The `expiry`
 is when tokens become withdrawable; `maximum` is the ceiling on any later extension.
+If supporting later lock extensions is not needed there is also `lock(fundId, expiry)` available
+for use.
 
-`extendLock(fundId, newExpiry)` pushes the expiry forward (within `maximum`), e.g. to extend
-a storage deal's duration once more participants join.
+`extendLock(fundId, newExpiry)` pushes the expiry forward (within `maximum`).
 
 ### Depositing (`deposit`)
 
 The controller calls `deposit(fundId, accountId, amount)` to move ERC20 tokens from the
-controller (or another approved address) into the Vault, crediting an account's available
+controller (or another approved address) into the Warden, crediting an account's available
 balance.
 
 ### Transferring (`transfer`)
@@ -136,7 +134,7 @@ tokens-per-second from one account to another. Flows are tracked lazily: no toke
 every block. Instead, when any state-changing operation is applied to an account, the
 accumulated flow since the last update is computed and applied.
 
-Tokens flowing *into* an account become **designated** immediately on arrival — they cannot
+Tokens flowing *into* an account become **designated** immediately on arrival - they cannot
 be redirected away.
 
 The solvency invariant is enforced when a flow is set up: the sending account's available
@@ -175,7 +173,7 @@ or griefing controller cannot block withdrawals.
 
 ## Invariants
 
-The Vault maintains three key invariants at all times:
+The Warden maintains three key invariants at all times:
 
 ### 1. Lock Invariant
 ```
@@ -183,38 +181,24 @@ fund.lockExpiry <= fund.lockMaximum
 ```
 The expiry can never exceed the maximum set at lock time.
 
-### 2. Account Solvency Invariant
-```
-flow.outgoing * (fund.lockMaximum - flow.updated) <= balance.available
-```
-An account's available balance is always sufficient to cover its outgoing flow until the
-maximum possible unlock time. This is checked on every `flow`, `designate`, and `transfer`.
-
-### 3. Flow Conservation Invariant
-```
-∑ incoming flows = ∑ outgoing flows (per fund)
-```
-Every token flowing out of one account flows into another; no tokens are created or destroyed
-by flows.
-
 ---
 
 ## Security Properties
 
 | Threat | Mitigation |
 |--------|-----------|
-| Controller exploited — attacker tries to redirect funds | Funds are locked; attacker can only reassign during the lock window. Once the lock expires, tokens are fixed in place. |
+| Controller exploited - attacker tries to redirect funds | Funds are locked; attacker can only reassign during the lock window. Once the lock expires, tokens are fixed in place. |
 | Controller redirects collateral to attacker | Collateral is designated at deposit time; designated tokens cannot be transferred. |
 | Compromised controller maliciously upgrades to block withdrawals | Account holders can call `withdrawByRecipient` directly, bypassing the controller. |
 | Attacker tries to bleed funds via token flows | Flows are bounded by the solvency invariant; total outflow is capped at available balance. |
 | Controller is upgraded mid-flight to steal flowing tokens | Incoming flows designate tokens immediately; they are protected as soon as they arrive. |
-| Partial compromise — attacker controls some state | `freezeFund` lets the controller halt flows at a known-good snapshot, limiting further damage. |
+| Partial compromise - attacker controls some state | `freezeFund` lets the controller halt flows at a known-good snapshot, limiting further damage. |
 
 ---
 
 ## Example: Storage Marketplace Usage
 
-The Vault was designed for a decentralised storage marketplace (Archivist/Codex). The
+The Warden was designed for a decentralised storage marketplace (Archivist/Codex). The
 Marketplace contract acts as the controller. For each storage request:
 
 1. A `FundId` is derived from the request ID.
@@ -241,7 +225,7 @@ Marketplace contract acts as the controller. For each storage request:
 ## Interface (Proposed)
 
 ```solidity
-interface IVault {
+interface IWarden {
     // Types
     type FundId is bytes32;
     type AccountId is bytes32;  // 20-byte holder || 12-byte discriminator
@@ -296,38 +280,38 @@ against the closest existing standards.
 | Freeze / emergency halt | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Lock extension with bounded maximum | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-### ERC-4626 — Tokenized Vault Standard (Final)
+### ERC-4626 - Tokenized Vault Standard (Final)
 ERC-4626 standardises **yield-bearing vaults** where depositors receive share tokens
-representing their claim. It is focused on composability between yield strategies. The Vault
+representing their claim. It is focused on composability between yield strategies. The Warden
 described here has a different goal: **security isolation** rather than yield. There are no
 share tokens; accounts are tracked internally by the controller's domain objects. The two
 standards are complementary and could coexist.
 
-### ERC-6229 — Tokenized Vaults with Lock-in Period (Draft)
+### ERC-6229 - Tokenized Vaults with Lock-in Period (Draft)
 ERC-6229 extends ERC-4626 by adding a lock/unlock cycle where deposits and redemptions are
 queued during the locked phase and settled at unlock. It is oriented around **yield strategy
 execution** (e.g. a vault that needs to deploy capital for a period). It has no notion of
 controller/custody separation, no designation semantics, no streaming, and no multi-account
-fund management. Its lock mechanism serves a different purpose — preventing front-running of
-a strategy — rather than protecting funds from a compromised controller.
+fund management. Its lock mechanism serves a different purpose - preventing front-running of
+a strategy - rather than protecting funds from a compromised controller.
 
-### ERC-7444 — Time Locks Maturity (Draft)
+### ERC-7444 - Time Locks Maturity (Draft)
 ERC-7444 defines a single function `getMaturity(bytes32 id)` that returns the Unix timestamp
 at which a locked asset becomes accessible. It is a **query interface** only, not a custody
 or fund-management interface. It does not specify how locking is enforced, how funds flow, or
 how accounts are isolated.
 
-### ERC-1620 — Money Streaming (Draft)
+### ERC-1620 - Money Streaming (Draft)
 ERC-1620 proposes a standard for continuous token streams between two parties (sender →
 recipient) tracked by block number. Streams are 1-to-1, there is no multi-account fund
-grouping, no designation, no lock/unlock lifecycle, and no solvency invariant. The Vault's
+grouping, no designation, no lock/unlock lifecycle, and no solvency invariant. The Warden's
 streaming primitive is similar in spirit but is integrated with the fund lifecycle: streams
 are bounded by the lock maximum, and tokens flowing into an account are immediately
 designated, preventing re-redirection.
 
 ### Summary
 
-The Vault standard introduces a novel combination: a **controller-scoped custody layer** that
+The Warden standard introduces a novel combination: a **controller-scoped custody layer** that
 groups multiple accounts into time-locked funds and enforces designation and streaming
 semantics to protect funds throughout a multi-party deal lifecycle. No existing ERC covers
 this design space.
