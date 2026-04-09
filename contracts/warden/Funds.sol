@@ -8,8 +8,8 @@ struct Fund {
   Timestamp lockExpiry;
   /// The lock expiry can be extended no further than this
   Timestamp lockMaximum;
-  /// Indicates whether fund is frozen, and at what time
-  Timestamp frozenAt;
+  /// Indicates whether fund is sealed, and at what time
+  Timestamp sealedAt;
 }
 
 /// A fund can go through the following states:
@@ -17,7 +17,7 @@ struct Fund {
 ///     -->  Inactive ---> Locked -----> Withdrawing
 ///                          \               ^
 ///                           \             /
-///                            --> Frozen --
+///                            --> Sealed --
 ///
 enum FundStatus {
   /// Indicates that the fund is inactive and contains no tokens. This is the
@@ -27,9 +27,9 @@ enum FundStatus {
   /// fund needs to be locked for deposits, transfers and burning to be
   /// allowed.
   Locked,
-  /// Indicates that a locked fund is frozen. Nothing is allowed until the
+  /// Indicates that a locked fund is sealed. Nothing is allowed until the
   /// fund unlocks.
-  Frozen,
+  Sealed,
   /// Indicates the fund has unlocked and withdrawing is allowed. Other
   /// operations are no longer allowed.
   Withdrawing
@@ -38,8 +38,8 @@ enum FundStatus {
 library Funds {
   function status(Fund memory fund) internal view returns (FundStatus) {
     if (Timestamps.currentTime() < fund.lockExpiry) {
-      if (fund.frozenAt != Timestamp.wrap(0)) {
-        return FundStatus.Frozen;
+      if (fund.sealedAt != Timestamp.wrap(0)) {
+        return FundStatus.Sealed;
       }
       return FundStatus.Locked;
     }

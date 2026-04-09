@@ -18,7 +18,7 @@ logic, an attacker can often drain funds in a single transaction. The Warden pat
 **defence in depth**: even if a controller is fully compromised, the Warden's invariants ensure
 that:
 
-- Tokens cannot be redirected immediately - they are frozen in place once a time-lock expires.
+- Tokens cannot be redirected immediately - they are sealed in place once a time-lock expires.
 - Collateral tokens can be permanently committed (designated) to their rightful owner,
   making redirection impossible.
 - Account holders can always withdraw directly, bypassing a compromised controller entirely.
@@ -67,17 +67,17 @@ The holder address embedded in the ID is used to route withdrawals; it does not 
 ```
 Inactive ──lock()──► Locked ──time passes──► Withdrawing
                         │
-                    freezeFund()
+                    sealFund()
                         │
                         ▼
-                      Frozen ──time passes──► Withdrawing
+                      Sealed ──time passes──► Withdrawing
 ```
 
 | State       | Allowed operations |
 |-------------|-------------------|
 | Inactive    | `lock()` |
-| Locked      | `deposit`, `transfer`, `flow`, `designate`, `burnDesignated`, `burnAccount`, `extendLock`, `freezeFund` |
-| Frozen      | nothing (flows halted, balances fixed) |
+| Locked      | `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `extendLock`, `sealFund` |
+| Sealed      | nothing (balances fixed) |
 | Withdrawing | `withdraw`, `withdrawByRecipient` |
 
 The controller determines when and for how long a fund is locked, subject to two constraints
@@ -152,16 +152,16 @@ redistributed.
 `burnAccount(fundId, accountId)` destroys an entire account's balance, but only when the
 account has no active flows. Used when a participant is forcibly removed.
 
-### Freezing (`freezeFund`)
+### Sealing (`sealFund`)
 
-`freezeFund(fundId)` immediately halts all token flows and prevents any further operations on
-the fund until the lock expires. All flow calculations use the freeze timestamp instead of
-`lockExpiry`. Used when a catastrophic failure means the contract should stop processing.
+`sealFund(fundId)` seals account balances - no further transfers, designations, deposits, or
+burns are permitted until the lock expires and withdrawals begin. Used when the controller
+needs to commit to the current allocation and prevent any further changes.
 
 ### Withdrawal (`withdraw`, `withdrawByRecipient`)
 
 After the fund unlocks (state transitions to `Withdrawing`), tokens can be sent to their
-holders. The total payout for an account is `available + designated` at flow-end time.
+holders. The total payout for an account is `available + designated`.
 
 `withdraw(fundId, accountId)` can be called by the controller on behalf of an account holder.
 
@@ -173,9 +173,9 @@ or griefing controller cannot block withdrawals.
 
 ## Invariants
 
-The Warden maintains three key invariants at all times:
+The Warden maintains the following invariant at all times:
 
-### 1. Lock Invariant
+### Lock Invariant
 ```
 fund.lockExpiry <= fund.lockMaximum
 ```
@@ -190,9 +190,7 @@ The expiry can never exceed the maximum set at lock time.
 | Controller exploited - attacker tries to redirect funds | Funds are locked; attacker can only reassign during the lock window. Once the lock expires, tokens are fixed in place. |
 | Controller redirects collateral to attacker | Collateral is designated at deposit time; designated tokens cannot be transferred. |
 | Compromised controller maliciously upgrades to block withdrawals | Account holders can call `withdrawByRecipient` directly, bypassing the controller. |
-| Attacker tries to bleed funds via token flows | Flows are bounded by the solvency invariant; total outflow is capped at available balance. |
-| Controller is upgraded mid-flight to steal flowing tokens | Incoming flows designate tokens immediately; they are protected as soon as they arrive. |
-| Partial compromise - attacker controls some state | `freezeFund` lets the controller halt flows at a known-good snapshot, limiting further damage. |
+| Partial compromise - attacker controls some state | `sealFund` lets the controller commit to the current allocation, preventing any further redistribution. |
 
 ---
 
@@ -231,7 +229,7 @@ interface IWarden {
     type AccountId is bytes32;  // 20-byte holder || 12-byte discriminator
     type TokensPerSecond is uint96;
 
-    enum FundStatus { Inactive, Locked, Frozen, Withdrawing }
+    enum FundStatus { Inactive, Locked, Sealed, Withdrawing }
 
     // Account ID helpers
     function encodeAccountId(address holder, bytes12 discriminator) external pure returns (AccountId);
@@ -246,7 +244,7 @@ interface IWarden {
     // Fund lifecycle (caller is the controller)
     function lock(FundId fundId, uint40 expiry, uint40 maximum) external;
     function extendLock(FundId fundId, uint40 expiry) external;
-    function freezeFund(FundId fundId) external;
+    function sealFund(FundId fundId) external;
 
     // Token operations (caller is the controller, fund must be Locked)
     function deposit(FundId fundId, AccountId accountId, uint128 amount) external;

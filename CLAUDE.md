@@ -57,7 +57,7 @@ Fund → Account hierarchy
 
 ### Fund / Account Hierarchy
 
-- **Fund**: top-level custody unit owned by a controller. Has a lifecycle (Inactive → Locked → Withdrawing or Frozen → Withdrawing) and two time parameters: `lockExpiry` (when withdrawal can begin) and `lockMaximum` (upper bound used for solvency checking).
+- **Fund**: top-level custody unit owned by a controller. Has a lifecycle (Inactive → Locked → Withdrawing or Sealed → Withdrawing) and two time parameters: `lockExpiry` (when withdrawal can begin) and `lockMaximum` (upper bound used for solvency checking).
 - **Account**: subdivision of a Fund. Identified by a `bytes32 AccountId` encoding a 20-byte holder address + 12-byte discriminator. Each account tracks `available` balance and `designated` (committed, non-transferable) balance.
 
 ### Token Operations (all called by the controller)
@@ -69,7 +69,7 @@ Fund → Account hierarchy
 | `transfer` | Redistribute available (non-designated) tokens between accounts |
 | `designate` | Irreversibly commit available tokens to the account holder |
 | `burnDesignated` / `burnAccount` | Destroy tokens (slashing) |
-| `freezeFund` | Seal account balances - no further transfers, designations, deposits, or burns until the fund unlocks and withdrawals begin |
+| `sealFund` | Seal account balances - no further transfers, designations, deposits, or burns until the fund unlocks and withdrawals begin |
 | `withdraw` / `withdrawByRecipient` | Transfer tokens out after lock expires |
 
 ### Core Invariant (enforced in `WardenBase.sol`)

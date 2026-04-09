@@ -20,10 +20,10 @@ Most DeFi contracts hold their own ERC-20 token balances. When a bug or exploit 
 
 Concretely, the Warden addresses these threat scenarios:
 
-- **Redirecting funds** - A time-lock prevents an attacker from withdrawing tokens immediately; by the time the lock expires, the balances are frozen in place.
+- **Redirecting funds** - A time-lock prevents an attacker from withdrawing tokens immediately; by the time the lock expires, the balances are fixed in place.
 - **Stealing collateral** - Designation makes tokens permanently committed to their rightful holder; no controller operation can transfer them away.
 - **Blocking withdrawals** - Account holders can call `withdrawByRecipient` directly, bypassing the controller entirely.
-- **Catastrophic partial compromise** - `freezeFund` halts operations and freezes balances at a known-good snapshot.
+- **Catastrophic partial compromise** - `sealFund` seals balances at a known-good snapshot, preventing any further redistribution.
 
 No existing ERC covers this combination of features. ERC-4626 targets yield-bearing vaults without controller/custody separation. ERC-6229 adds lock-in periods to ERC-4626 but serves a different purpose. ERC-7444 is a query-only maturity interface.
 
@@ -46,7 +46,7 @@ A compliant Warden MUST expose the following enum:
 enum FundStatus {
   Inactive,     // No lock set; no tokens held.
   Locked,       // Time-lock is active; controller operations are permitted.
-  Frozen,       // Fund is halted; lock has not yet expired.
+  Sealed,       // Fund is halted; lock has not yet expired.
   Withdrawing   // Lock has expired; withdrawals are permitted.
 }
 ```
@@ -82,16 +82,16 @@ A fund progresses through states according to the following state machine:
 ```
 Inactive ──lock()──► Locked ──lockExpiry passes──► Withdrawing
                        │
-                   freezeFund()
+                   sealFund()
                        │
                        ▼
-                     Frozen ──lockExpiry passes──► Withdrawing
+                     Sealed ──lockExpiry passes──► Withdrawing
 ```
 
 At any block, the effective status of a fund is derived from on-chain state as follows:
 
 1. If `block.timestamp < fund.lockExpiry`:
-   - If `fund.frozenAt != 0`: status is **Frozen**.
+   - If `fund.sealedAt != 0`: status is **Sealed**.
    - Otherwise: status is **Locked**.
 2. If `fund.lockMaximum == 0`: status is **Inactive**.
 3. Otherwise: status is **Withdrawing**.
@@ -187,16 +187,16 @@ Destroys the entire balance (available + designated) of an account.
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
 - On success: deletes the account record and transfers `available + designated` tokens to address `0x000000000000000000000000000000000000dEaD`.
 
-#### `freezeFund`
+#### `sealFund`
 
 ```solidity
-function freezeFund(FundId fundId) external;
+function sealFund(FundId fundId) external;
 ```
 
-Immediately halts all controller operations on a fund until the lock expires naturally.
+Seals account balances - no further transfers, designations, deposits, or burns are permitted until the lock expires and withdrawals begin.
 
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
-- On success: records `fund.frozenAt = block.timestamp`. The fund enters `Frozen` state.
+- On success: records `fund.sealedAt = block.timestamp`. The fund enters `Sealed` state.
 
 #### `withdraw`
 
@@ -284,7 +284,7 @@ The lock expiry can never exceed the maximum established at `lock` time. Checked
 
 A Warden implementation MAY support pausing by an owner or governance contract. If pausing is implemented:
 
-- All controller operations (`lock`, `extendLock`, `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `freezeFund`, `withdraw`) SHOULD be blocked when paused.
+- All controller operations (`lock`, `extendLock`, `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `sealFund`, `withdraw`) SHOULD be blocked when paused.
 - `withdrawByRecipient` MUST remain callable when paused. Account holders must always be able to recover their tokens.
 
 ### Interface
@@ -309,7 +309,7 @@ interface IWarden {
     enum FundStatus {
         Inactive,
         Locked,
-        Frozen,
+        Sealed,
         Withdrawing
     }
 
@@ -358,7 +358,7 @@ interface IWarden {
 
     function extendLock(FundId fundId, uint40 expiry) external;
 
-    function freezeFund(FundId fundId) external;
+    function sealFund(FundId fundId) external;
 
     // -------------------------------------------------------------------------
     // Token operations (msg.sender is the controller; fund must be Locked)

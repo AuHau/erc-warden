@@ -185,11 +185,11 @@ abstract contract WardenBase {
     _token.safeTransfer(address(0xdead), amount);
   }
 
-  function _freezeFund(Controller controller, FundId fundId) internal {
+  function _sealFund(Controller controller, FundId fundId) internal {
     Fund storage fund = _funds[controller][fundId];
     require(fund.status() == FundStatus.Locked, WardenFundNotLocked());
 
-    fund.frozenAt = Timestamps.currentTime();
+    fund.sealedAt = Timestamps.currentTime();
   }
 
   function _withdraw(

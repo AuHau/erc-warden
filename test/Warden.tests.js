@@ -467,7 +467,7 @@ describe("Warden", function () {
       })
     })
 
-    describe("freezing", function () {
+    describe("sealing", function () {
       const deposit = 1000
 
       let account1, account2, account3
@@ -489,10 +489,10 @@ describe("Warden", function () {
         await warden.deposit(fund, account1, deposit)
       })
 
-      it("can freeze a fund", async function () {
+      it("can seal a fund", async function () {
         await setAutomine(true)
-        await warden.freezeFund(fund)
-        expect(await warden.getFundStatus(fund)).to.equal(FundStatus.Frozen)
+        await warden.sealFund(fund)
+        expect(await warden.getFundStatus(fund)).to.equal(FundStatus.Sealed)
       })
 
     })
@@ -733,7 +733,7 @@ describe("Warden", function () {
     })
   })
 
-  describe("when a fund is frozen", function () {
+  describe("when a fund is sealed", function () {
     const amount = 1000
 
     let expiry
@@ -748,7 +748,7 @@ describe("Warden", function () {
       await token.connect(controller).approve(await warden.getAddress(), amount)
       await warden.lock(fund, expiry, expiry)
       await warden.deposit(fund, account, amount)
-      await warden.freezeFund(fund)
+      await warden.sealFund(fund)
     })
 
     it("does not allow setting a lock", async function () {
@@ -827,8 +827,8 @@ describe("Warden", function () {
       ).to.be.revertedWithCustomError(warden, "WardenFundNotLocked")
     })
 
-    it("does not allow freezing of a fund", async function () {
-      await expect(warden.freezeFund(fund)).to.be.revertedWithCustomError(
+    it("does not allow sealing of a fund", async function () {
+      await expect(warden.sealFund(fund)).to.be.revertedWithCustomError(
         warden,
         "WardenFundNotLocked",
       )
@@ -958,8 +958,8 @@ describe("Warden", function () {
         ).to.be.revertedWithCustomError(warden, "EnforcedPause")
       })
 
-      it("does not allow freezing of funds", async function () {
-        await expect(warden.freezeFund(fund)).to.be.revertedWithCustomError(
+      it("does not allow sealing of funds", async function () {
+        await expect(warden.sealFund(fund)).to.be.revertedWithCustomError(
           warden,
           "EnforcedPause",
         )

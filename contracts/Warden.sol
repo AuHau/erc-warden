@@ -197,11 +197,12 @@ contract Warden is WardenBase {
     _burnAccount(controller, fundId, accountId);
   }
 
-  /// Freezes a fund. Disallows any operations on the fund until it unlocks.
+  /// Seals a fund. Disallows any further transfers, designations, deposits,
+  /// or burns until the fund unlocks and withdrawals begin.
   /// Only allowed when the fund is locked.
-  function freezeFund(FundId fundId) public {
+  function sealFund(FundId fundId) public {
     Controller controller = Controller.wrap(msg.sender);
-    _freezeFund(controller, fundId);
+    _sealFund(controller, fundId);
   }
 
   /// Transfers all ERC20 tokens in the account out of the warden to the account
