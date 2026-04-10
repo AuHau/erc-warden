@@ -430,6 +430,73 @@ The ability for account holders to withdraw directly is the ultimate safety guar
 
 This specification does not mandate events in order to keep the interface minimal. Implementations SHOULD emit events for off-chain indexing, but the exact event signatures are left to the implementer to avoid over-constraining the ABI.
 
+## Extensions
+
+This section describes optional extensions that implementations MAY support. Extensions MUST NOT break compliance with the core specification; a Warden that does not implement an extension remains fully compliant.
+
+### Token Streaming (`flow`)
+
+The streaming extension allows a controller to establish a **continuous per-second token transfer** between two accounts within the same fund. Rather than executing a transfer at every block, accumulated amounts are computed lazily on-demand whenever state changes, keeping gas costs proportional to operations rather than time elapsed.
+
+Tokens flowing *into* an account become **designated** immediately on arrival — they cannot be redirected to any other account.
+
+#### New type
+
+```solidity
+type TokensPerSecond is uint96;
+```
+
+#### New operations
+
+```solidity
+function flow(
+    FundId fundId,
+    AccountId from,
+    AccountId to,
+    TokensPerSecond rate
+) external;
+```
+
+Establishes or updates a continuous token stream from `from` to `to` at `rate` tokens per second. Setting `rate` to zero cancels an existing stream.
+
+- MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
+- MUST enforce the **solvency invariant** (see below) on the sending account after updating the rate. MUST revert if the invariant would be violated.
+- Accumulated flow since the last update MUST be settled before applying the new rate: the elapsed amount is deducted from `from.balance.available` and added to `to.balance.designated`.
+
+#### New invariants
+
+Two additional invariants apply when the streaming extension is active.
+
+**Solvency invariant** — the sending account must hold enough available balance to cover all outgoing flow from now until `lockMaximum`:
+
+```
+flow.rate × (fund.lockMaximum − now) ≤ account.balance.available
+```
+
+This is checked at the time `flow` is called. Because `lockMaximum` is fixed at lock creation time and `extendLock` cannot exceed it, the invariant guarantees the stream is fully funded regardless of any future `extendLock` calls.
+
+**Flow conservation invariant** — for every fund, total incoming flow rate across all accounts equals total outgoing flow rate:
+
+```
+Σ incoming rates = Σ outgoing rates  (per fund)
+```
+
+This invariant is maintained naturally because each `flow` call sets one outgoing stream from one account to one other account within the same fund.
+
+#### Interaction with `sealFund`
+
+When a fund is sealed, all flow calculations use `fund.sealedAt` as the cut-off timestamp instead of `lockExpiry`. No further accumulation occurs after sealing.
+
+#### Interaction with `burnAccount`
+
+`burnAccount` MUST revert if the account has any active incoming or outgoing flows. The controller must set those flows to zero before burning the account.
+
+#### Security considerations
+
+**Solvency at setup time, not at withdrawal time.** The solvency invariant is enforced when `flow` is called, not continuously. If additional transfers out of the sending account are made after a flow is established, the invariant must be re-checked; implementations SHOULD enforce it on every operation that reduces `available` balance on an account with outgoing flows.
+
+**Re-entrancy during settlement.** Lazy settlement computes and applies accumulated amounts at the start of each state-changing operation. Implementations MUST apply settlement before performing any ERC-20 transfer to prevent re-entrancy from observing an unsettled state.
+
 ## Security Considerations
 
 ### Re-entrancy
