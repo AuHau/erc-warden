@@ -29,7 +29,24 @@ No existing ERC covers this combination of features. ERC-4626 targets yield-bear
 
 ## Specification
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119 and RFC 8174.
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119 and RFC 8174.
+
+### Definitions
+
+| Term | Definition |
+|------|-----------|
+| **Warden** | The custody contract defined by this standard. Holds ERC-20 tokens on behalf of controllers and enforces all invariants. |
+| **Controller** | A smart contract that instructs the Warden to move tokens. Identified by its address (`msg.sender`). Each controller has an isolated namespace of funds and cannot access another controller's funds. |
+| **Fund** | A top-level grouping of accounts owned by one controller. Carries a time-lock lifecycle and a unique `FundId` chosen by the controller. |
+| **Account** | A subdivision of a fund belonging to one holder. Tracks an available balance and a designated balance separately. Identified by an `AccountId`. |
+| **Holder** | The address that is entitled to withdraw the tokens in an account. Encoded in the high-order 20 bytes of the `AccountId`. |
+| **Discriminator** | A 12-byte value packed into the low-order bytes of an `AccountId`. Allows one holder address to own multiple independent accounts within the same fund. |
+| **Available balance** | The portion of an account's balance that the controller can still transfer to other accounts or designate. |
+| **Designated balance** | The portion of an account's balance that has been irreversibly committed to the holder. Cannot be transferred to any other account; can only be burned or withdrawn by the holder. |
+| **Designation** | The act of moving tokens from available to designated. Irreversible within the lifetime of a fund. |
+| **Burning** | Permanently destroying tokens by sending them to address `0x000000000000000000000000000000000000dEaD`. Used for slashing or penalty. |
+| **Lock** | The time-window during which the controller may operate on a fund. Defined by `lockExpiry` — the timestamp at which the fund transitions to `Withdrawing`. |
+| **Seal** | A controller-initiated transition that closes a fund to all further operations before the lock expires naturally. The fund remains sealed until `lockExpiry`, then transitions to Withdrawing. |
 
 ### Types
 
