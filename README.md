@@ -1,6 +1,15 @@
-# ERC Warden: A Secure Token Custody Standard
+# ERC-XXXX Warden reference implementation
 
 ## Overview
+
+This repository contains reference implementation of the ERC-XXXX Warden smart contract.
+It is based on implementation written by [Mark Spanbroek](https://github.com/markspanbroek) originally for Codex 
+(now Logos Storage - part of [Logos](https://logos.co/)) and later on also forked into [Archivist](https://archivist.storage/),
+where it is now [actively used](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
+
+This implementation implement the core [specification](./SPEC.md) with the Lock Extension extension. If you are interested in
+the Token Streaming extension visit [the original implementation by Mark](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
+Bellow is changelog of changes that differentiate this reference implementation from the original one. 
 
 The Warden is a smart contract pattern that separates ERC20 token custody from business logic,
 reducing the attack surface of contracts that manage funds. Rather than holding tokens directly,
@@ -24,6 +33,10 @@ that:
 - Account holders can always withdraw directly, bypassing a compromised controller entirely.
 - Burning tokens is always available as a last resort to destroy value rather than let an
   attacker capture it.
+- Controllers that use upgradability patterns (e.g. UUPS) cannot rug-pull users by upgrading
+  their logic to redirect funds - the Warden's rules are enforced independently of the
+  controller's implementation. Even if the controller's owner account is compromised and a
+  malicious upgrade is pushed, tokens cannot be extracted outside the Warden's constraints.
 
 ---
 
@@ -51,147 +64,6 @@ Each account belongs to a fund and tracks:
 - **designated balance** - tokens irreversibly committed to the account holder; cannot be
   transferred away, only burned or withdrawn
 
-### Account Identity
-
-An `AccountId` encodes both the **holder address** (20 bytes) and a **discriminator** (12 bytes).
-The discriminator allows a single address to hold multiple separate accounts within the same fund.
-The holder address embedded in the ID is used to route withdrawals; it does not need to be the
-`msg.sender` of any transaction.
-
----
-
-## Lifecycle
-
-### Fund States
-
-```
-Inactive ──lock()──► Locked ──time passes──► Withdrawing
-                        │
-                    sealFund()
-                        │
-                        ▼
-                      Sealed ──time passes──► Withdrawing
-```
-
-| State       | Allowed operations |
-|-------------|-------------------|
-| Inactive    | `lock()` |
-| Locked      | `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `extendLock`, `sealFund` |
-| Sealed      | nothing (balances fixed) |
-| Withdrawing | `withdraw`, `withdrawByRecipient` |
-
-The controller determines when and for how long a fund is locked, subject to two constraints
-set at lock time:
-
-- `lockExpiry` - when the lock expires naturally
-- `lockMaximum` - the furthest the expiry can ever be extended
-
-The `lockMaximum` is fixed at lock creation time and cannot be changed. This means the Warden
-can enforce the **account solvency invariant** at the time a flow is set up: the available
-balance must be sufficient to pay the outgoing flow all the way to `lockMaximum`, regardless
-of any future `extendLock` calls.
-
----
-
-## Core Operations
-
-### Locking (`lock`, `extendLock`)
-
-The controller calls `lock(fundId, expiry, maximum)` once to activate a fund. The `expiry`
-is when tokens become withdrawable; `maximum` is the ceiling on any later extension.
-If supporting later lock extensions is not needed there is also `lock(fundId, expiry)` available
-for use.
-
-`extendLock(fundId, newExpiry)` pushes the expiry forward (within `maximum`).
-
-### Depositing (`deposit`)
-
-The controller calls `deposit(fundId, accountId, amount)` to move ERC20 tokens from the
-controller (or another approved address) into the Warden, crediting an account's available
-balance.
-
-### Transferring (`transfer`)
-
-`transfer(fundId, from, to, amount)` moves available tokens between two accounts within the
-same fund. Only the controller can call this while the fund is locked. Crucially, it can only
-move *available* (not designated) tokens.
-
-### Designation (`designate`)
-
-`designate(fundId, accountId, amount)` moves tokens from an account's available balance into
-its designated balance. Designated tokens:
-- **cannot be transferred** to any other account
-- **can be burned** by the controller
-- **will be paid out** to the account holder on withdrawal
-
-This is used for collateral: once committed as designated, collateral cannot be stolen by a
-compromised controller even if the controller tries to transfer it away.
-
-### Token Flows (`flow`)
-
-`flow(fundId, from, to, rate)` establishes a **continuous token stream** at `rate`
-tokens-per-second from one account to another. Flows are tracked lazily: no tokens move at
-every block. Instead, when any state-changing operation is applied to an account, the
-accumulated flow since the last update is computed and applied.
-
-Tokens flowing *into* an account become **designated** immediately on arrival - they cannot
-be redirected away.
-
-The solvency invariant is enforced when a flow is set up: the sending account's available
-balance must cover the total outflow from the current time to `lockMaximum`.
-
-Flows are useful for streaming payments (e.g. a client paying a storage provider
-per-second for the duration of a deal).
-
-### Burning (`burnDesignated`, `burnAccount`)
-
-`burnDesignated(fundId, accountId, amount)` destroys designated tokens (sends to
-`0x000...dead`). This implements penalty/slashing: the tokens are destroyed rather than
-redistributed.
-
-`burnAccount(fundId, accountId)` destroys an entire account's balance, but only when the
-account has no active flows. Used when a participant is forcibly removed.
-
-### Sealing (`sealFund`)
-
-`sealFund(fundId)` seals account balances - no further transfers, designations, deposits, or
-burns are permitted until the lock expires and withdrawals begin. Used when the controller
-needs to commit to the current allocation and prevent any further changes.
-
-### Withdrawal (`withdraw`, `withdrawByRecipient`)
-
-After the fund unlocks (state transitions to `Withdrawing`), tokens can be sent to their
-holders. The total payout for an account is `available + designated`.
-
-`withdraw(fundId, accountId)` can be called by the controller on behalf of an account holder.
-
-`withdrawByRecipient(controller, fundId, accountId)` can be called **directly by the account
-holder**, bypassing the controller entirely. This is a critical safety property: a compromised
-or griefing controller cannot block withdrawals.
-
----
-
-## Invariants
-
-The Warden maintains the following invariant at all times:
-
-### Lock Invariant
-```
-fund.lockExpiry <= fund.lockMaximum
-```
-The expiry can never exceed the maximum set at lock time.
-
----
-
-## Security Properties
-
-| Threat | Mitigation |
-|--------|-----------|
-| Controller exploited - attacker tries to redirect funds | Funds are locked; attacker can only reassign during the lock window. Once the lock expires, tokens are fixed in place. |
-| Controller redirects collateral to attacker | Collateral is designated at deposit time; designated tokens cannot be transferred. |
-| Compromised controller maliciously upgrades to block withdrawals | Account holders can call `withdrawByRecipient` directly, bypassing the controller. |
-| Partial compromise - attacker controls some state | `sealFund` lets the controller commit to the current allocation, preventing any further redistribution. |
-
 ---
 
 ## Example: Storage Marketplace Usage
@@ -217,48 +89,6 @@ Marketplace contract acts as the controller. For each storage request:
    - The lock expires; the fund enters the Withdrawing state.
    - Hosts call `freeSlot` → `withdraw` to receive accumulated payment + remaining collateral.
    - The client calls `withdrawFunds` to receive any unspent payment.
-
----
-
-## Interface (Proposed)
-
-```solidity
-interface IWarden {
-    // Types
-    type FundId is bytes32;
-    type AccountId is bytes32;  // 20-byte holder || 12-byte discriminator
-    type TokensPerSecond is uint96;
-
-    enum FundStatus { Inactive, Locked, Sealed, Withdrawing }
-
-    // Account ID helpers
-    function encodeAccountId(address holder, bytes12 discriminator) external pure returns (AccountId);
-    function decodeAccountId(AccountId id) external pure returns (address holder, bytes12 discriminator);
-
-    // Queries (caller is the controller)
-    function getBalance(FundId fundId, AccountId accountId) external view returns (uint128);
-    function getDesignatedBalance(FundId fundId, AccountId accountId) external view returns (uint128);
-    function getFundStatus(FundId fundId) external view returns (FundStatus);
-    function getLockExpiry(FundId fundId) external view returns (uint40 timestamp);
-
-    // Fund lifecycle (caller is the controller)
-    function lock(FundId fundId, uint40 expiry, uint40 maximum) external;
-    function extendLock(FundId fundId, uint40 expiry) external;
-    function sealFund(FundId fundId) external;
-
-    // Token operations (caller is the controller, fund must be Locked)
-    function deposit(FundId fundId, AccountId accountId, uint128 amount) external;
-    function transfer(FundId fundId, AccountId from, AccountId to, uint128 amount) external;
-    function designate(FundId fundId, AccountId accountId, uint128 amount) external;
-    function flow(FundId fundId, AccountId from, AccountId to, TokensPerSecond rate) external;
-    function burnDesignated(FundId fundId, AccountId accountId, uint128 amount) external;
-    function burnAccount(FundId fundId, AccountId accountId) external;
-
-    // Withdrawal (fund must be Withdrawing)
-    function withdraw(FundId fundId, AccountId accountId) external;   // called by controller
-    function withdrawByRecipient(address controller, FundId fundId, AccountId accountId) external; // called by account holder
-}
-```
 
 ---
 
@@ -307,9 +137,8 @@ streaming primitive is similar in spirit but is integrated with the fund lifecyc
 are bounded by the lock maximum, and tokens flowing into an account are immediately
 designated, preventing re-redirection.
 
-### Summary
+## Changelog from Original implementation (Vault)
 
-The Warden standard introduces a novel combination: a **controller-scoped custody layer** that
-groups multiple accounts into time-locked funds and enforces designation and streaming
-semantics to protect funds throughout a multi-party deal lifecycle. No existing ERC covers
-this design space.
+ * Renaming Vault into Warden
+ * Dropping Token Streaming in favor of simplicity
+ * Renaming `freezeFund` to `sealFund` to prevent confusion
