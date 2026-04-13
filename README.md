@@ -2,21 +2,22 @@
 
 ## Overview
 
-This repository contains reference implementation of the ERC-XXXX Warden smart contract.
-It is based on implementation written by [Mark Spanbroek](https://github.com/markspanbroek) originally for Codex 
-(now Logos Storage - part of [Logos](https://logos.co/)) and later on also forked into [Archivist](https://archivist.storage/),
-where it is now [actively used](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
-
-This implementation implement the core [specification](./SPEC.md) with the Lock Extension extension. If you are interested in
-the Token Streaming extension visit [the original implementation by Mark](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
-Bellow is changelog of changes that differentiate this reference implementation from the original one. 
-
-The Warden is a smart contract pattern that separates ERC20 token custody from business logic,
+The Warden is a smart contract pattern that separates ERC-20 token custody from business logic,
 reducing the attack surface of contracts that manage funds. Rather than holding tokens directly,
 a business-logic contract (called a **controller**) delegates all token custody to an external
 Warden contract. The Warden enforces strict rules about when and how tokens can move, adding
 time-based and designation-based protections that limit the damage an attacker can do even
 after compromising the controller.
+
+This repository contains a reference implementation of the ERC-XXXX Warden standard,
+based on an implementation by [Mark Spanbroek](https://github.com/markspanbroek) originally
+written for Codex (now [Logos](https://logos.co/) Storage) and later forked into
+[Archivist](https://archivist.storage/), where it is
+[actively used](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
+
+This implementation covers the core [specification](./SPEC.md) and the Lock Extension. For the
+Token Streaming extension, see [the original Archivist implementation](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
+Below is a changelog of the changes that differentiate this reference implementation from the original.
 
 ---
 
@@ -27,7 +28,7 @@ logic, an attacker can often drain funds in a single transaction. The Warden pat
 **defence in depth**: even if a controller is fully compromised, the Warden's invariants ensure
 that:
 
-- Tokens cannot be redirected immediately - they are sealed in place once a time-lock expires.
+- Tokens cannot be immediately redirected — the time-lock holds balances in place until expiry, after which they can only be withdrawn to their rightful holders.
 - Collateral tokens can be permanently committed (designated) to their rightful owner,
   making redirection impossible.
 - Account holders can always withdraw directly, bypassing a compromised controller entirely.
@@ -48,7 +49,7 @@ that:
 Warden
  └── Controller (a smart contract address)
       └── Fund (identified by a bytes32 FundId chosen by the controller)
-           └── Account (identified by AccountId = holder address ++ 12-byte discriminator)
+           └── Account (identified by AccountId = holder address (20 bytes) | discriminator (12 bytes))
                 ├── available balance
                 └── designated balance
 ```
@@ -57,7 +58,7 @@ Each controller (i.e. each deployed business-logic contract) has its own isolate
 of funds inside the shared Warden. Controllers cannot access each other's funds.
 
 Each fund is a collection of accounts that share a single lifecycle (the time-lock). Funds
-are created by the controller choosing a unique `FundId`
+are created by the controller choosing a unique `FundId`.
 
 Each account belongs to a fund and tracks:
 - **available balance** - tokens that the controller can still redistribute between accounts
@@ -69,7 +70,11 @@ Each account belongs to a fund and tracks:
 ## Example: Storage Marketplace Usage
 
 The Warden was designed for a decentralised storage marketplace (Archivist/Codex). The
-Marketplace contract acts as the controller. For each storage request:
+Marketplace contract acts as the controller. The example below illustrates the full use case
+including the Token Streaming extension (steps 4–7), which is not part of this implementation
+but is available in the [original Archivist implementation](https://github.com/durability-labs/archivist-contracts/blob/main/contracts/Vault.sol).
+
+For each storage request:
 
 1. A `FundId` is derived from the request ID.
 2. The fund is locked for the expiry window; the maximum is the full request duration.
@@ -135,10 +140,10 @@ recipient) tracked by block number. Streams are 1-to-1, there is no multi-accoun
 grouping, no designation, no lock/unlock lifecycle, and no solvency invariant. The Warden's
 streaming primitive is similar in spirit but is integrated with the fund lifecycle: streams
 are bounded by the lock maximum, and tokens flowing into an account are immediately
-designated, preventing re-redirection.
+designated, preventing redirection.
 
-## Changelog from Original implementation (Vault)
+## Changelog from Original Implementation (Vault)
 
- * Renaming Vault into Warden
- * Dropping Token Streaming in favor of simplicity
- * Renaming `freezeFund` to `sealFund` to prevent confusion
+- Renamed `Vault` to `Warden`
+- Dropped Token Streaming in favour of simplicity
+- Renamed `freezeFund` to `sealFund` to avoid confusion with confiscation of funds

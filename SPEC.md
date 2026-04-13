@@ -51,18 +51,19 @@ The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SH
 
 ### Types
 
-For better readability we introduce following alias types:
+For better readability this specification introduces the following alias types:
 
 | Type | Underlying | Description |
 |------|-----------|-------------|
 | `FundId` | `bytes32` | Identifies a fund within a controller's namespace. Chosen by the controller. |
 | `AccountId` | `bytes32` | Identifies an account. Encodes a 20-byte holder address (high bits) and a 12-byte discriminator (low bits). |
+| `Timestamp` | `uint40` | A Unix timestamp in seconds. Used for lock expiry values. |
 
-A compliant Warden MUST use underlying or aliased types for these concepts.
+A compliant Warden MUST use these types (or their underlying equivalents) in its interface.
 
 ### Fund state machine
 
-A compliant Warden MUST implement following fund states:
+A compliant Warden MUST implement the following fund states:
 
 ```solidity
 enum FundStatus {
@@ -102,8 +103,7 @@ The holder address embedded in the `AccountId` is the only address to which toke
 
 ### Smart contract deployment and maintenance
 
-A Warden implementation MUST NOT utilize upgradibility patterns like UUPS or transparent proxy. If user of Warden requires control over the Warden
-they MAY support pausing by an owner or governance contract. If pausing is implemented:
+A Warden implementation MUST NOT utilize upgradeability patterns like UUPS or transparent proxies. If the Warden deployer requires operational control, they MAY support pausing by an owner or governance contract. If pausing is implemented:
 
 - All controller operations (`lock`, `deposit`, `transfer`, `designate`, `burnDesignated`, `burnAccount`, `sealFund`, `withdraw`) SHOULD be blocked when paused.
 - `withdrawByRecipient` MUST remain callable when paused. Account holders must always be able to recover their tokens.
@@ -142,7 +142,7 @@ function transfer(FundId fundId, AccountId from, AccountId to, uint128 amount) e
 Moves available tokens between two accounts within the same fund. Only *available* tokens (not designated) can be transferred.
 
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
-- MUST revert with `WardenInsufficientBalance` if `amount > sender.balance.available`.
+- MUST revert with `WardenInsufficientBalance` if `amount > from.balance.available`.
 - After the solvency check passes: `from.balance.available -= amount`, `to.balance.available += amount`.
 
 #### `designate`
@@ -189,7 +189,7 @@ function sealFund(FundId fundId) external;
 Seals account balances - no further transfers, designations, deposits, or burns are permitted until the lock expires and withdrawals begin.
 
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
-- On success: records `fund.sealedAt = block.timestamp`. The fund enters `Sealed` state.
+- On success: the fund enters `Sealed` state.
 
 #### `withdraw`
 
@@ -200,15 +200,15 @@ function withdraw(FundId fundId, AccountId accountId) external;
 Called by the controller to send an account's full balance to its holder.
 
 - MUST revert with `WardenFundNotUnlocked` if the fund is not in `Withdrawing` state.
-- Computes `amount = account.balance.available + account.balance.designated`.
-- Deletes the account record (so a second `withdraw` call returns zero tokens).
-- Transfers `amount` of the ERC-20 token to the holder address extracted from `accountId`.
+- MUST compute `total = account.balance.available + account.balance.designated`.
+- MUST delete the account record before transferring (so a second `withdraw` call for the same account transfers zero tokens).
+- MUST transfer `total` of the ERC-20 token to the holder address extracted from `accountId`.
 
 #### `withdrawByRecipient`
 
 ```solidity
 function withdrawByRecipient(
-    Controller controller,
+    address controller,
     FundId fundId,
     AccountId accountId
 ) external;
@@ -223,7 +223,7 @@ This function MUST NOT be subject to the pause mechanism (if any), so that accou
 
 ### Query Functions
 
-A compliant Warden MUST expose the following view functions. All are called by the controller (`msg.sender` determines the controller namespace):
+A compliant Warden MUST expose the following view functions. For fund-scoped queries, `msg.sender` determines the controller namespace:
 
 ```solidity
 function getToken() external view returns (IERC20);
@@ -252,9 +252,7 @@ Returns the `lockExpiry` timestamp of the fund.
 
 ### Invariants
 
-A compliant Warden MUST enforce the following invariant at every state-changing operation. Any operation that would violate it MUST revert.
-
-The core specification has no invariants beyond the state machine transition rules enforced by the fund status checks on each operation.
+The core specification defines no invariants beyond the fund state machine transition rules. Each operation enforces its preconditions via the status checks described above. Extensions may introduce additional invariants; see the relevant extension sections.
 
 ### Errors
 
@@ -285,6 +283,8 @@ interface IWarden {
     // AccountId encodes: bytes20(holder) || bytes12(discriminator)
     type AccountId is bytes32;
 
+    type Timestamp is uint40;
+
     enum FundStatus {
         Inactive,
         Locked,
@@ -299,7 +299,6 @@ interface IWarden {
     error WardenFundAlreadyLocked();
     error WardenFundNotLocked();
     error WardenFundNotUnlocked();
-    error WardenInvalidExpiry();
     error WardenInsufficientBalance();
     error WardenOnlyAccountHolder();
 
@@ -317,13 +316,13 @@ interface IWarden {
 
     function getFundStatus(FundId fundId) external view returns (FundStatus);
 
-    function getLockExpiry(FundId fundId) external view returns (uint40);
+    function getLockExpiry(FundId fundId) external view returns (Timestamp);
 
     // -------------------------------------------------------------------------
     // Fund lifecycle (msg.sender is the controller)
     // -------------------------------------------------------------------------
 
-    function lock(FundId fundId, uint40 expiry) external;
+    function lock(FundId fundId, Timestamp expiry) external;
 
     function sealFund(FundId fundId) external;
 
@@ -403,7 +402,7 @@ This section describes optional extensions that implementations MAY support. Ext
 
 ### Lock Extension (`extendLock`)
 
-By default, a fund's lock expiry is fixed at the time `lock` is called. This extension allows the controller to push the expiry forward after locking, up to a ceiling (`lockMaximum`) established at lock time. This is useful when the duration of a deal or agreement may need to be extended without creating a new fund. Also it is to be noted, that sealing funds with `sealFund()` will prevent further lock extensions.
+By default, a fund's lock expiry is fixed at the time `lock` is called. This extension allows the controller to push the expiry forward after locking, up to a ceiling (`lockMaximum`) established at lock time. This is useful when the duration of a deal or agreement may need to be extended without creating a new fund. Sealing a fund terminates the ability to extend its lock: `extendLock` requires `Locked` state and MUST revert on a `Sealed` fund.
 
 #### Changes to `lock`
 
@@ -500,7 +499,7 @@ This invariant is maintained naturally because each `flow` call sets one outgoin
 
 #### Interaction with `sealFund`
 
-When a fund is sealed, all flow calculations use `fund.sealedAt` as the cut-off timestamp instead of `lockExpiry`. No further accumulation occurs after sealing.
+When this extension is active, the Warden MUST record the sealing timestamp on `sealFund` (`sealedAt = block.timestamp`). All flow calculations use `fund.sealedAt` as the cut-off timestamp instead of `lockExpiry`. No further accumulation occurs after sealing.
 
 #### Interaction with `burnAccount`
 
@@ -514,7 +513,9 @@ When a fund is sealed, all flow calculations use `fund.sealedAt` as the cut-off 
 
 ### Warden Discovery (`getWarden`)
 
-A contract that uses a Warden as its custody backend MAY expose the Warden address through the following view function:
+Unlike the extensions above (which are implemented by the Warden contract), this convention applies to **controller contracts** that use a Warden as their custody backend.
+
+A controller MAY expose the Warden address through the following view function:
 
 ```solidity
 function getWarden() external view returns (IWarden);
@@ -524,7 +525,7 @@ This allows off-chain tools, indexers, and other on-chain contracts to discover 
 
 ## Reference Implementation
 
-
+A reference implementation is provided at https://github.com/auHau/erc-warden
 
 ## Security Considerations
 
