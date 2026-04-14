@@ -1,5 +1,7 @@
 # ERC-XXXX Warden reference implementation
 
+> ⚠️ This implementation was not yet audited. Use it cautiously in production ⚠️
+
 ## Overview
 
 The Warden is a smart contract pattern that separates ERC-20 token custody from business logic,
