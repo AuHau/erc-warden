@@ -396,6 +396,12 @@ The ability for account holders to withdraw directly is the ultimate safety guar
 
 This specification does not mandate events in order to keep the interface minimal. Implementations SHOULD emit events for off-chain indexing, but the exact event signatures are left to the implementer to avoid over-constraining the ABI.
 
+### Controller access restriction
+
+It is RECOMMENDED that Warden deployments restrict which addresses may act as controllers — for example, by allowlisting only the deployer's own contracts. An unrestricted Warden accepts any `msg.sender` as a controller, which means third parties could use it to custody their users' funds.
+
+This matters most when the Warden has an owner or pausing mechanism. An owner who can pause the Warden gains effective control over every fund stored in it, regardless of which controller created the fund. If third-party funds are stored in a Warden that the deployer can pause, the deployer may be considered a custodian of those funds in some jurisdictions, with the associated regulatory and legal liability. Restricting the controller set to contracts the deployer controls keeps the deployer's custodial exposure limited to their own application.
+
 ## Extensions
 
 This section describes optional extensions that implementations MAY support. Extensions MUST NOT break compliance with the core specification; a Warden that does not implement an extension remains fully compliant.
