@@ -1,13 +1,13 @@
 ---
 eip: XXXX
-title: Secure Token Custody Warden
+title: Warden - Secure Token Custody Contract 
 description: A standard interface for controller-scoped ERC-20 token custody with time-locked funds and account designation.
 author: Adam Uhlir <adam@uhlir.dev>, Mark Spanbroek <mark@spanbroek.net>, Eric Mastro (@emizzle)
-discussions-to: https://ethereum-magicians.org/
+discussions-to: https://ethereum-magicians.org/t/erc-warden-contract-secure-token-custody/28252
 status: Draft
 type: Standards Track
 category: ERC
-created: 2026-04-07
+created: 2026-04-15
 requires: 20
 ---
 
@@ -45,7 +45,7 @@ The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SH
 | **Available balance** | The portion of an account's balance that the controller can still transfer to other accounts or designate. |
 | **Designated balance** | The portion of an account's balance that has been irreversibly committed to the holder. Cannot be transferred to any other account; can only be burned or withdrawn by the holder. |
 | **Designation** | The act of moving tokens from available to designated. Irreversible within the lifetime of a fund. |
-| **Burning** | Permanently destroying tokens by sending them to address `0x000000000000000000000000000000000000dEaD`. Used for slashing or penalty. |
+| **Burning** | Permanently destroying tokens by sending them to address `0x000000000000000000000000000000000000dEaD` or using the `burn()` function of the used ERC-20 token. |
 | **Lock** | The time-window during which the controller may operate on a fund. Defined by `lockExpiry` — the timestamp at which the fund transitions to `Withdrawing`. |
 | **Seal** | A controller-initiated transition that closes a fund to all further operations before the lock expires naturally. The fund remains sealed until `lockExpiry`, then transitions to Withdrawing. |
 
@@ -167,7 +167,7 @@ Destroys a specified quantity of designated tokens from an account (penalty/slas
 
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
 - MUST revert with `WardenInsufficientBalance` if `amount > account.balance.designated`.
-- On success: `account.balance.designated -= amount`. The `amount` of tokens MUST be transferred to address `0x000000000000000000000000000000000000dEaD`.
+- On success: `account.balance.designated -= amount`. The `amount` of tokens MUST be transferred to address `0x000000000000000000000000000000000000dEaD` or burned using the `burn()` function of the ERC-20 token, if it supports it.
 
 #### `burnAccount`
 
@@ -178,7 +178,7 @@ function burnAccount(FundId fundId, AccountId accountId) external;
 Destroys the entire balance (available + designated) of an account.
 
 - MUST revert with `WardenFundNotLocked` if the fund is not in `Locked` state.
-- On success: deletes the account record and transfers `available + designated` tokens to address `0x000000000000000000000000000000000000dEaD`.
+- On success: deletes the account record and transfers `available + designated` tokens to address `0x000000000000000000000000000000000000dEaD` or burned using the `burn()` function of the ERC-20 token, if it supports it.
 
 #### `sealFund`
 
