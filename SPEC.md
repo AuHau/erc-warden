@@ -1,9 +1,9 @@
 ---
-eip: XXXX
+eip: 8233
 title: Warden - Secure Token Custody Contract 
 description: A standard interface for controller-scoped ERC-20 token custody with time-locked funds and account designation.
 author: Adam Uhlir <adam@uhlir.dev>, Mark Spanbroek <mark@spanbroek.net>, Eric Mastro (@emizzle)
-discussions-to: https://ethereum-magicians.org/t/erc-warden-contract-secure-token-custody/28252
+discussions-to: https://ethereum-magicians.org/t/erc-8233-warden-secure-token-custody-contract/28252
 status: Draft
 type: Standards Track
 category: ERC
@@ -272,7 +272,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @title IERC-XXXX Secure Token Custody Warden
+/// @title IERC-8233 Secure Token Custody Warden
 interface IWarden {
     // -------------------------------------------------------------------------
     // Types

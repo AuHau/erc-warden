@@ -1,4 +1,4 @@
-# ERC-XXXX Warden reference implementation
+# ERC-8233 Warden reference implementation
 
 > ⚠️ This implementation was not yet audited. Use it cautiously in production ⚠️
 
@@ -11,7 +11,7 @@ Warden contract. The Warden enforces strict rules about when and how tokens can 
 time-based and designation-based protections that limit the damage an attacker can do even
 after compromising the controller.
 
-This repository contains a reference implementation of the ERC-XXXX Warden standard,
+This repository contains a reference implementation of the ERC-8233 Warden standard,
 based on an implementation by [Mark Spanbroek](https://github.com/markspanbroek) originally
 written for Codex (now [Logos](https://logos.co/) Storage) and later forked into
 [Archivist](https://archivist.storage/), where it is
